@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zerodays Notes | Patch 3 - Encrypted</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined" rel="stylesheet">
+    <script src="https://unpkg.com/dexie@3.2.4/dist/dexie.js"></script>
+    <style>
+        :root {
+            --bg-dark: #1a1a1a;
+            --bg-surface: #202124;
+            --bg-surface-hover: #28292c;
+            --bg-modal: #2a2a2e;
+            --text-primary: #e1e1e1;
+            --text-secondary: #9aa0a6;
+            --accent: #8ab4f8;
+            --accent-dim: #3c4043;
+            --border: #5f6368;
+            --danger: #f28b82;
+            --success: #a8d8a8;
+            --default-note: #2d2e30;
+            --max-width: 900px;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Outfit', sans-serif; background-color: var(--bg-dark); color: var(--text-primary); overflow-y: scroll; }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg-dark); }
+        ::-webkit-scrollbar-thumb { background: var(--accent-dim); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--border); }
+        .app-container { display: flex; height: 100vh; }
+        
+        /* Sidebar */
+        .sidebar { width: 280px; background: var(--bg-surface); padding: 16px 0; display: flex; flex-direction: column; border-right: 1px solid var(--accent-dim); transition: transform 0.3s ease; z-index: 100; }
+        .sidebar-brand { padding: 12px 24px; font-size: 1.25rem; font-weight: 600; letter-spacing: 0.5px; color: var(--accent); margin-bottom: 16px; display: flex; align-items: center; gap: 12px; }
+        .sidebar-nav { flex: 1; display: flex; flex-direction: column; gap: 2px; padding: 0 12px; overflow-y: auto;}
+        .nav-item { display: flex; align-items: center; gap: 16px; padding: 12px 16px; border-radius: 0 24px 24px 0; cursor: pointer; color: var(--text-secondary); transition: all 0.15s ease; font-weight: 500; }
+        .nav-item:hover { background: var(--bg-surface-hover); color: var(--text-primary); }
+        .nav-item.active { background: var(--accent-dim); color: var(--accent); }
+        .nav-item .material-icons-outlined { font-size: 22px; }
+        .nav-section-title { font-size: 0.75rem; color: var(--border); padding: 16px 16px 8px; text-transform: uppercase; letter-spacing: 1px; }
+        
+        .sidebar-footer { padding: 16px 24px; border-top: 1px solid var(--accent-dim); display: flex; flex-direction: column; gap: 12px; }
+        .sidebar-footer button { background: transparent; border: 1px solid var(--border); color: var(--text-secondary); padding: 8px 12px; border-radius: 6px; cursor: pointer; font-family: inherit; display: flex; align-items: center; gap: 8px; transition: all 0.15s ease; font-size: 0.9rem; }
+        .sidebar-footer button:hover { background: var(--bg-surface-hover); color: var(--text-primary); }
+
+        /* Main Content */
+        .main-content { flex: 1; display: flex; flex-direction: column; overflow-y: auto; background: var(--bg-dark); }
+        .main-header { padding: 16px 24px; display: flex; align-items: center; gap: 16px; background: var(--bg-dark); position: sticky; top: 0; z-index: 50; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+        .menu-toggle { display: none; background: transparent; border: none; color: var(--text-secondary); cursor: pointer; }
+        .search-bar { flex: 1; background: var(--bg-surface); border: 1px solid var(--accent-dim); border-radius: 8px; padding: 10px 16px; color: var(--text-primary); font-family: inherit; font-size: 0.95rem; outline: none; transition: border-color 0.2s; }
+        .search-bar:focus { border-color: var(--accent); }
+        .search-bar::placeholder { color: var(--text-secondary); }
+        .lock-indicator { display: flex; align-items: center; gap: 8px; color: var(--success); font-size: 0.85rem; font-weight: 500; }
+        .lock-indicator .material-icons-outlined { font-size: 20px; }
+
+        .notes-area { padding: 24px; flex: 1; }
+        .section-title { font-size: 0.85rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 12px; padding-left: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .masonry-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; align-items: start; }
+        
+        /* Note Card */
+        .note-card { background: var(--default-note); border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); padding: 16px; cursor: default; transition: box-shadow 0.2s; display: flex; flex-direction: column; gap: 12px; position: relative; }
+        .note-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.4); }
+        .note-card:hover .note-actions { opacity: 1; }
+        .note-title { font-weight: 600; font-size: 1.05rem; line-height: 1.4; word-wrap: break-word; }
+        .note-body { font-size: 0.9rem; color: var(--text-secondary); line-height: 1.5; word-wrap: break-word; white-space: pre-wrap; max-height: 300px; overflow: hidden; }
+        .note-image-container { width: calc(100% + 32px); margin: -16px -16px 0 -16px; height: 150px; overflow: hidden; border-radius: 8px 8px 0 0; }
+        .note-image { width: 100%; height: 100%; object-fit: cover; }
+        .note-actions { display: flex; gap: 4px; opacity: 0; transition: opacity 0.2s; margin-top: 8px; }
+        .action-btn { background: transparent; border: none; color: var(--text-secondary); cursor: pointer; padding: 6px; border-radius: 50%; display: flex; align-items: center; justify-content: center; position: relative; }
+        .action-btn:hover { background: rgba(255,255,255,0.1); color: var(--text-primary); }
+        .action-btn .material-icons-outlined { font-size: 18px; }
+        
+        /* Color Picker */
+        .color-picker-popup { position: absolute; bottom: 32px; left: 0; background: var(--bg-modal); border-radius: 8px; padding: 8px; display: none; gap: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); z-index: 10; flex-wrap: wrap; width: 140px; }
+        .color-picker-popup.active { display: flex; }
+        .color-circle { width: 24px; height: 24px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; transition: transform 0.1s; }
+        .color-circle:hover { transform: scale(1.15); }
+
+        /* Create Area */
+        .create-area { max-width: 600px; margin: 32px auto; background: var(--bg-surface); border-radius: 8px; border: 1px solid var(--accent-dim); padding: 16px; display: flex; align-items: center; gap: 16px; cursor: text; transition: border-color 0.2s; }
+        .create-area:hover { border-color: var(--border); }
+        .create-text { color: var(--text-secondary); flex: 1; }
+
+        /* Modal Base */
+        .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); z-index: 1000; display: none; align-items: center; justify-content: center; padding: 24px; }
+        .modal-overlay.active { display: flex; }
+        .modal-content { background: var(--bg-modal); border-radius: 8px; width: 100%; max-width: 600px; display: flex; flex-direction: column; box-shadow: 0 8px 24px rgba(0,0,0,0.5); border: 1px solid var(--accent-dim); max-height: 90vh; overflow-y: auto; }
+        .modal-header { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+        .modal-input { background: transparent; border: none; color: var(--text-primary); font-family: inherit; outline: none; width: 100%; }
+        .modal-title { font-size: 1.25rem; font-weight: 600; }
+        .modal-body-text { font-size: 1rem; min-height: 150px; resize: none; color: var(--text-secondary); line-height: 1.5; }
+        .modal-image-preview { width: 100%; max-height: 300px; object-fit: contain; border-radius: 4px; margin-bottom: 8px; }
+        .modal-footer { padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; }
+
+        /* Guide Modal Specific */
+        .guide-content { padding: 24px; color: var(--text-secondary); line-height: 1.6; font-size: 0.95rem; }
+        .guide-content h2 { color: var(--accent); margin: 24px 0 12px; font-size: 1.2rem; display: flex; align-items: center; gap: 8px; }
+        .guide-content h2:first-child { margin-top: 0; }
+        .guide-content p { margin-bottom: 12px; }
+        .guide-content ul { padding-left: 24px; margin-bottom: 16px; }
+        .guide-content li { margin-bottom: 8px; }
+        .guide-content code { background: var(--bg-dark); padding: 2px 6px; border-radius: 4px; font-family: monospace; color: var(--danger); }
+        .guide-content .warning-box { background: rgba(242, 139, 130, 0.1); border-left: 4px solid var(--danger); padding: 12px; border-radius: 4px; margin-bottom: 16px; }
+
+        /* Auth Setup Screen */
+        .auth-setup { text-align: center; padding: 60px 24px; max-width: 500px; margin: auto; }
+        .auth-setup h1 { color: var(--accent); margin-bottom: 16px; }
+        .auth-setup p { color: var(--text-secondary); margin-bottom: 32px; line-height: 1.5; }
+        .auth-input { width: 100%; padding: 12px; background: var(--bg-surface); border: 1px solid var(--accent-dim); border-radius: 8px; color: var(--text-primary); font-family: inherit; margin-bottom: 16px; outline: none; font-size: 1rem; }
+        .auth-input:focus { border-color: var(--accent); }
+        .auth-btn { background: var(--accent); color: var(--bg-dark); border: none; padding: 12px 24px; border-radius: 8px; font-family: inherit; font-weight: 600; cursor: pointer; width: 100%; font-size: 1rem; transition: opacity 0.2s; }
+        .auth-btn:hover { opacity: 0.9; }
+        .auth-btn.danger { background: var(--danger); color: var(--bg-dark); }
+
+        /* Toast */
+        .toast-container { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 2000; display: flex; flex-direction: column; gap: 8px; align-items: center; }
+        .toast { background: var(--bg-modal); color: var(--accent); padding: 12px 24px; border-radius: 8px; font-size: 0.9rem; box-shadow: 0 4px 12px rgba(0,0,0,0.5); border: 1px solid var(--accent-dim); animation: fadeIn 0.3s, fadeOut 0.3s 2.7s forwards; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
+
+        @media (max-width: 768px) {
+            .sidebar { position: fixed; height: 100%; transform: translateX(-100%); }
+            .sidebar.open { transform: translateX(0); box-shadow: 8px 0 24px rgba(0,0,0,0.5); }
+            .menu-toggle { display: block; }
+            .masonry-grid { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
+        }
+        .hidden-input { display: none; }
+    </style>
+</head>
+<body>
+
+    <!-- Setup / Unlock Screen -->
+    <div class="auth-setup" id="auth-screen">
+        <span class="material-icons-outlined" style="font-size: 64px; color: var(--accent); margin-bottom: 24px;">enhanced_encryption</span>
+        <h1>Zerodays Notes</h1>
+        <p>Local-first, end-to-end encrypted note-taking. Your data never leaves your browser unencrypted.</p>
+        
+        <div id="auth-setup-form" style="display:none;">
+            <input type="password" class="auth-input" id="setup-password" placeholder="Create Master Password (min 8 chars)">
+            <input type="password" class="auth-input" id="setup-confirm" placeholder="Confirm Master Password">
+            <button class="auth-btn" id="btn-setup">Initialize Vault</button>
+        </div>
+
+        <div id="auth-login-form" style="display:none;">
+            <input type="password" class="auth-input" id="login-password" placeholder="Enter Master Password">
+            <button class="auth-btn" id="btn-login">Unlock Vault</button>
+            <button class="auth-btn danger" id="btn-wipe" style="margin-top: 12px; background: transparent; border: 1px solid var(--danger); color: var(--danger);">Wipe Vault & Reset</button>
+        </div>
+    </div>
+
+    <div class="app-container" id="app-container" style="display: none;">
+        <!-- Sidebar -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-brand">
+                <span class="material-icons-outlined">security</span>
+                ZD NOTES P3
+            </div>
+            <nav class="sidebar-nav">
+                <div class="nav-section-title">Workspace</div>
+                <div class="nav-item active" data-filter="notes">
+                    <span class="material-icons-outlined">lightbulb</span>
+                    <span>Notes</span>
+                </div>
+                <div class="nav-item" data-filter="archived">
+                    <span class="material-icons-outlined">archive</span>
+                    <span>Archive</span>
+                </div>
+                <div class="nav-item" data-filter="trashed">
+                    <span class="material-icons-outlined">delete</span>
+                    <span>Trash</span>
+                </div>
+                <div class="nav-section-title">System</div>
+                <div class="nav-item" id="nav-guide">
+                    <span class="material-icons-outlined">menu_book</span>
+                    <span>Guidelines & Info</span>
+                </div>
+                <div class="nav-item" id="nav-lock">
+                    <span class="material-icons-outlined">lock</span>
+                    <span>Lock Vault</span>
+                </div>
+            </nav>
+            <div class="sidebar-footer">
+                <button id="btn-export"><span class="material-icons-outlined" style="font-size:18px;">download</span> Export Data</button>
+                <button id="btn-import"><span class="material-icons-outlined" style="font-size:18px;">upload</span> Import Data</button>
+                <input type="file" id="file-import" class="hidden-input" accept=".json">
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="main-header">
+                <button class="menu-toggle" id="menu-toggle">
+                    <span class="material-icons-outlined">menu</span>
+                </button>
+                <input type="text" class="search-bar" id="search-bar" placeholder="Search decrypted notes...">
+                <div class="lock-indicator">
+                    <span class="material-icons-outlined">lock</span> Encrypted
+                </div>
+            </header>
+
+            <div class="notes-area" id="notes-area">
+                <div class="create-area" id="create-area">
+                    <span class="create-text">Take a note...</span>
+                </div>
+                <div id="pinned-section" style="display: none; margin-top: 24px;">
+                    <div class="section-title">PINNED</div>
+                    <div class="masonry-grid" id="pinned-grid"></div>
+                </div>
+                <div id="unpinned-section" style="margin-top: 24px;">
+                    <div class="section-title" id="unpinned-title">OTHERS</div>
+                    <div class="masonry-grid" id="unpinned-grid"></div>
+                </div>
+                <div id="trash-header" style="display: none; margin-top: 24px;">
+                    <div class="section-title" style="color: var(--danger);">TRASH (Auto-deletes after 7 days)</div>
+                    <button id="empty-trash-btn" style="background:transparent; border:1px solid var(--danger); color:var(--danger); padding:6px 12px; border-radius:4px; cursor:pointer; margin-bottom:16px; font-family:inherit;">Empty Trash</button>
+                </div>
+                <div id="message-area" style="display:none; text-align:center; padding:80px 0; color:var(--text-secondary);">
+                    <span class="material-icons-outlined" style="font-size:64px; opacity:0.3;">notes</span>
+                    <p style="margin-top:16px;">Notes you add appear here</p>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Edit/Create Modal -->
+    <div class="modal-overlay" id="modal-overlay">
+        <div class="modal-content" id="modal-content">
+            <div class="modal-header">
+                <input type="text" class="modal-input modal-title" id="modal-title" placeholder="Title">
+                <img id="modal-image-preview" class="modal-image-preview" style="display:none;" src="" alt="Preview">
+                <textarea class="modal-input modal-body-text" id="modal-body" placeholder="Take a note..."></textarea>
+            </div>
+            <div class="modal-footer">
+                <div style="display:flex; gap:4px;">
+                    <button class="action-btn" id="modal-color-btn" title="Change Color">
+                        <span class="material-icons-outlined">palette</span>
+                        <div class="color-picker-popup" id="modal-color-picker"></div>
+                    </button>
+                    <button class="action-btn" id="modal-image-btn" title="Add Image">
+                        <span class="material-icons-outlined">image</span>
+                    </button>
+                    <input type="file" id="modal-image-input" class="hidden-input" accept="image/*">
+                </div>
+                <button class="action-btn" id="modal-close-btn" style="font-size:0.9rem; font-weight:500; color:var(--text-secondary);" title="Close">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Guide / Info Modal -->
+    <div class="modal-overlay" id="guide-overlay">
+        <div class="modal-content" style="max-width: 700px;">
+            <div class="modal-header" style="border-bottom: 1px solid var(--accent-dim);">
+                <h1 style="color: var(--accent); font-size: 1.4rem;">Guidelines & Encryption Info</h1>
+            </div>
+            <div class="guide-content">
+                <div class="warning-box">
+                    <strong>⚠️ CRITICAL WARNING:</strong> If you forget your Master Password, your data is cryptographically impossible to recover. There are no backdoors. 
+                </div>
+
+                <h2><span class="material-icons-outlined">enhanced_encryption</span> Local Encryption</h2>
+                <p>Zerodays Notes uses the Web Crypto API (AES-GCM 256-bit) to encrypt your notes locally.</p>
+                <ul>
+                    <li>Your Master Password is <strong>never stored</strong>. It is hashed using PBKDF2 (100,000 iterations) to derive the encryption key.</li>
+                    <li>When saving, data is encrypted in-memory and written to IndexedDB as ciphertext.</li>
+                    <li>When loading, data is decrypted only after you unlock the vault.</li>
+                    <li>Images inside notes are also encrypted as Base64 ciphertext.</li>
+                </ul>
+
+                <h2><span class="material-icons-outlined">storage</span> Data Storage & Export</h2>
+                <p>All data lives strictly in your browser's IndexedDB (Local Storage). Nothing is sent to a server.</p>
+                <ul>
+                    <li><strong>Export:</strong> Creates a <code>.json</code> file of your <strong>decrypted</strong> data. Keep this file safe! It is unencrypted plaintext.</li>
+                    <li><strong>Import:</strong> Merges a previously exported <code>.json</code> file into your current vault. The imported data will be encrypted with your current vault's key upon saving.</li>
+                </ul>
+
+                <h2><span class="material-icons-outlined">delete_sweep</span> Wipe & Reset</h2>
+                <p>If you forget your password or wish to start over, click <strong>"Wipe Vault & Reset"</strong> on the login screen. This will permanently delete the IndexedDB database and all stored salt/hashes.</p>
+
+                <h2><span class="material-icons-outlined">sync</span> Multi-Tab Sync</h2>
+                <p>Uses the Broadcast Channel API. If you have the app open in two tabs, changes in one will automatically reflect in the other, provided both are unlocked.</p>
+            </div>
+            <div class="modal-footer">
+                <button class="auth-btn" id="close-guide-btn" style="width: auto; background: var(--accent-dim); color: var(--text-primary);">Understood</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast-container" id="toast-container"></div>
+
+    <script>
+        // --- 1. DATABASE LAYER ---
+        const db = new Dexie('ZerodaysNotesDB');
+        db.version(1).stores({
+            notes: 'id, updatedAt, isPinned, isArchived, isTrashed, trashedAt'
+        });
+
+        // --- 2. CRYPTO & STATE MANAGEMENT ---
+        let currentFilter = 'notes';
+        let searchQuery = '';
+        let activeModalNote = null;
+        let pendingImageBase64 = null;
+        let cryptoKey = null; // Holds the Web Crypto key in memory
+
+        const COLORS = [
+            { name: 'Default', hex: '#2d2e30' },
+            { name: 'Dark Coral', hex: '#5c2b29' },
+            { name: 'Dark Peach', hex: '#614b19' },
+            { name: 'Dark Mud', hex: '#3d4a2c' },
+            { name: 'Dark Teal', hex: '#2e5c4e' },
+            { name: 'Dark Storm', hex: '#2d4a5e' },
+            { name: 'Dark Plum', hex: '#4a2d5e' },
+            { name: 'Charcoal', hex: '#3c3f43' }
+        ];
+
+        // --- 3. UTILITY & CRYPTO FUNCTIONS ---
+        function generateId() {
+            return crypto.randomUUID ? crypto.randomUUID() : ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c => (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16));
+        }
+
+        function showToast(message) {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = 'toast';
+            toast.textContent = message;
+            container.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Array buffer to Base64
+        function buf2b64(buf) {
+            return btoa(String.fromCharCode.apply(null, new Uint8Array(buf)));
+        }
+
+        // Base64 to Array buffer
+        function b642buf(b64) {
+            const bin = atob(b64);
+            const buf = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+            return buf.buffer;
+        }
+
+        // Derive Key from Password
+        async function deriveKey(password, salt) {
+            const enc = new TextEncoder();
+            const keyMaterial = await crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, ["deriveKey"]);
+            return crypto.subtle.deriveKey(
+                { name: "PBKDF2", salt: salt, iterations: 100000, hash: "SHA-256" },
+                keyMaterial,
+                { name: "AES-GCM", length: 256 },
+                false,
+                ["encrypt", "decrypt"]
+            );
+        }
+
+        // Encrypt Data
+        async function encryptData(dataObj) {
+            if (!cryptoKey) return JSON.stringify(dataObj); // Fallback if unencrypted
+            const iv = crypto.getRandomValues(new Uint8Array(12));
+            const enc = new TextEncoder();
+            const encrypted = await crypto.subtle.encrypt({ name: "AES-GCM", iv: iv }, cryptoKey, enc.encode(JSON.stringify(dataObj)));
+            return JSON.stringify({ iv: buf2b64(iv), data: buf2b64(encrypted) });
+        }
+
+        // Decrypt Data
+        async function decryptData(encryptedString) {
+            if (!cryptoKey) return JSON.parse(encryptedString);
+            try {
+                const encObj = JSON.parse(encryptedString);
+                const iv = b642buf(encObj.iv);
+                const data = b642buf(encObj.data);
+                const dec = await crypto.subtle.decrypt({ name: "AES-GCM", iv: iv }, cryptoKey, data);
+                const decText = new TextDecoder().decode(dec);
+                return JSON.parse(decText);
+            } catch (e) {
+                throw new Error("Decryption failed. Wrong password?");
+            }
+        }
+
+        // --- 4. AUTH SYSTEM ---
+        async function checkVaultExists() {
+            const setupForm = document.getElementById('auth-setup-form');
+            const loginForm = document.getElementById('auth-login-form');
+            const hasVault = localStorage.getItem('zd_vault_salt');
+            
+            if (hasVault) {
+                loginForm.style.display = 'block';
+                setupForm.style.display = 'none';
+            } else {
+                loginForm.style.display = 'none';
+                setupForm.style.display = 'block';
+            }
+        }
+
+        async function setupVault() {
+            const pass = document.getElementById('setup-password').value;
+            const confirm = document.getElementById('setup-confirm').value;
+            if (pass.length < 8) return showToast("Password must be at least 8 characters");
+            if (pass !== confirm) return showToast("Passwords do not match");
+
+            const salt = crypto.getRandomValues(new Uint8Array(16));
+            localStorage.setItem('zd_vault_salt', buf2b64(salt));
+            cryptoKey = await deriveKey(pass, salt);
+            
+            // Save a test verification string
+            const testObj = { verification: "zd_success" };
+            localStorage.setItem('zd_vault_test', await encryptData(testObj));
+
+            unlockUI();
+        }
+
+        async function loginVault() {
+            const pass = document.getElementById('login-password').value;
+            const salt = b642buf(localStorage.getItem('zd_vault_salt'));
+            cryptoKey = await deriveKey(pass, salt);
+
+            try {
+                const testObj = await decryptData(localStorage.getItem('zd_vault_test'));
+                if (testObj.verification === 'zd_success') {
+                    unlockUI();
+                } else {
+                    cryptoKey = null;
+                    showToast("Invalid Password");
+                }
+            } catch (e) {
+                cryptoKey = null;
+                showToast("Invalid Password or Corrupted Vault");
+            }
+        }
+
+        function lockVault() {
+            cryptoKey = null;
+            document.getElementById('app-container').style.display = 'none';
+            document.getElementById('auth-screen').style.display = 'block';
+            document.getElementById('login-password').value = '';
+            checkVaultExists();
+            showToast("Vault Locked");
+        }
+
+        async function wipeVault() {
+            if (confirm("WARNING: This will permanently delete ALL your notes and reset the vault. Are you absolutely sure?")) {
+                await db.delete();
+                localStorage.removeItem('zd_vault_salt');
+                localStorage.removeItem('zd_vault_test');
+                cryptoKey = null;
+                showToast("Vault wiped. Refreshing...");
+                setTimeout(() => window.location.reload(), 1000);
+            }
+        }
+
+        function unlockUI() {
+            document.getElementById('auth-screen').style.display = 'none';
+            document.getElementById('app-container').style.display = 'flex';
+            renderNotes();
+        }
+
+        // --- 5. CORE CRUD OPERATIONS (WITH ENCRYPTION) ---
+        async function saveNote(noteData) {
+            try {
+                noteData.updatedAt = Date.now();
+                
+                // Extract unencrypted index fields
+                const dbObj = {
+                    id: noteData.id,
+                    updatedAt: noteData.updatedAt,
+                    isPinned: noteData.isPinned,
+                    isArchived: noteData.isArchived,
+                    isTrashed: noteData.isTrashed,
+                    trashedAt: noteData.trashedAt
+                };
+
+                // Encrypt payload
+                const payload = {
+                    title: noteData.title,
+                    body: noteData.body,
+                    color: noteData.color,
+                    imageBase64: noteData.imageBase64
+                };
+
+                dbObj.encryptedPayload = await encryptData(payload);
+                await db.notes.put(dbObj);
+                renderNotes();
+            } catch (e) {
+                console.error("Error saving note:", e);
+                if (e.name === 'QuotaExceededError') showToast("Storage Full!");
+            }
+        }
+
+        async function getDecryptedNote(id) {
+            const dbNote = await db.notes.get(id);
+            if (!dbNote) return null;
+            try {
+                const payload = await decryptData(dbNote.encryptedPayload);
+                return { ...dbNote, ...payload };
+            } catch (e) {
+                console.error("Failed to decrypt single note", e);
+                return { ...dbNote, title: "Decryption Error", body: "Cannot read this note.", color: "#5c2b29" };
+            }
+        }
+
+        async function deleteNotePermanently(id) {
+            await db.notes.delete(id);
+            renderNotes();
+        }
+
+        async function emptyTrash() {
+            await db.notes.where('isTrashed').equals(1).delete();
+            renderNotes();
+            showToast('Trash emptied');
+        }
+
+        async function autoPurgeTrash() {
+            const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
+            await db.notes.where('isTrashed').equals(1).and(note => note.trashedAt < sevenDaysAgo).delete();
+        }
+
+        // --- 6. UI RENDERING ---
+        async function renderNotes() {
+            if (!cryptoKey) return; // Don't render if locked
+            await autoPurgeTrash();
+
+            let notes = [];
+            if (currentFilter === 'notes') {
+                notes = await db.notes.where('isArchived').equals(0).and(n => !n.isTrashed).toArray();
+            } else if (currentFilter === 'archived') {
+                notes = await db.notes.where('isArchived').equals(1).and(n => !n.isTrashed).toArray();
+            } else if (currentFilter === 'trashed') {
+                notes = await db.notes.where('isTrashed').equals(1).toArray();
+            }
+
+            // Decrypt notes for display
+            const decryptedNotes = [];
+            for (let n of notes) {
+                try {
+                    const payload = await decryptData(n.encryptedPayload);
+                    decryptedNotes.push({ ...n, ...payload });
+                } catch (e) {
+                    console.error("Decrypt render error", e);
+                }
+            }
+
+            // Search Filter
+            if (searchQuery) {
+                const lq = searchQuery.toLowerCase();
+                decryptedNotes = decryptedNotes.filter(n => 
+                    (n.title && n.title.toLowerCase().includes(lq)) || 
+                    (n.body && n.body.toLowerCase().includes(lq))
+                );
+            }
+
+            decryptedNotes.sort((a, b) => b.updatedAt - a.updatedAt);
+
+            // Update UI Visibility
+            createArea.style.display = currentFilter === 'notes' ? 'flex' : 'none';
+            pinnedSection.style.display = currentFilter === 'notes' ? 'block' : 'none';
+            trashHeader.style.display = currentFilter === 'trashed' ? 'block' : 'none';
+            
+            if (currentFilter === 'notes') unpinnedTitle.textContent = 'OTHERS';
+            else if (currentFilter === 'archived') unpinnedTitle.textContent = 'ARCHIVED';
+            else unpinnedTitle.textContent = 'TRASHED NOTES';
+
+            const pinned = decryptedNotes.filter(n => n.isPinned);
+            const unpinned = decryptedNotes.filter(n => !n.isPinned);
+
+            if (decryptedNotes.length === 0) {
+                messageArea.style.display = 'block';
+                pinnedSection.style.display = 'none';
+                unpinnedSection.style.display = 'none';
+            } else {
+                messageArea.style.display = 'none';
+                unpinnedSection.style.display = 'block';
+                if (currentFilter === 'notes' && pinned.length > 0) pinnedSection.style.display = 'block';
+                else pinnedSection.style.display = 'none';
+            }
+
+            renderGrid(pinnedGrid, pinned);
+            renderGrid(unpinnedGrid, unpinned);
+        }
+
+        function renderGrid(container, notes) {
+            container.innerHTML = '';
+            notes.forEach(note => {
+                const el = document.createElement('div');
+                el.className = 'note-card';
+                el.style.backgroundColor = note.color || COLORS[0].hex;
+                el.dataset.id = note.id;
+
+                let imageHtml = '';
+                if (note.imageBase64) {
+                    imageHtml = `<div class="note-image-container"><img src="${note.imageBase64}" class="note-image" alt="Note attachment"></div>`;
+                }
+
+                let bodyText = note.body || '';
+                if (bodyText.length > 150) bodyText = bodyText.substring(0, 150) + '...';
+
+                const titleDisplay = note.title ? `<div class="note-title">${escapeHtml(note.title)}</div>` : '';
+                const bodyDisplay = bodyText ? `<div class="note-body">${escapeHtml(bodyText)}</div>` : '';
+                
+                let actionsHtml = '';
+                if (currentFilter === 'trashed') {
+                    actionsHtml = `<div class="note-actions">
+                        <button class="action-btn" onclick="restoreNote('${note.id}')" title="Restore Note"><span class="material-icons-outlined">restore_from_trash</span></button>
+                        <button class="action-btn" onclick="permDeleteNote('${note.id}')" title="Delete Forever" style="color:var(--danger)"><span class="material-icons-outlined">delete_forever</span></button>
+                    </div>`;
+                } else {
+                    actionsHtml = `<div class="note-actions">
+                        ${currentFilter === 'notes' ? `<button class="action-btn" onclick="togglePin('${note.id}')" title="${note.isPinned ? 'Unpin' : 'Pin'}"><span class="material-icons-outlined">push_pin</span></button>` : ''}
+                        <button class="action-btn" onclick="toggleArchive('${note.id}')" title="${note.isArchived ? 'Unarchive' : 'Archive'}"><span class="material-icons-outlined">${note.isArchived ? 'unarchive' : 'archive'}</span></button>
+                        <button class="action-btn" onclick="moveToTrash('${note.id}')" title="Delete"><span class="material-icons-outlined">delete</span></button>
+                        <button class="action-btn note-color-btn" title="Change Color">
+                            <span class="material-icons-outlined">palette</span>
+                            <div class="color-picker-popup" id="cp-${note.id}"></div>
+                        </button>
+                    </div>`;
+                }
+
+                el.innerHTML = `${imageHtml} ${titleDisplay} ${bodyDisplay} ${actionsHtml}`;
+
+                if (currentFilter !== 'trashed') {
+                    el.addEventListener('click', (e) => {
+                        if (e.target.closest('.action-btn')) return;
+                        openModal(note);
+                    });
+                }
+
+                container.appendChild(el);
+
+                if (currentFilter !== 'trashed') {
+                    const cp = el.querySelector(`#cp-${note.id}`);
+                    COLORS.forEach(c => {
+                        const circle = document.createElement('div');
+                        circle.className = 'color-circle';
+                        circle.style.backgroundColor = c.hex;
+                        if (c.hex === '#2d2e30') circle.style.border = '1px solid #5f6368';
+                        circle.onclick = (e) => { e.stopPropagation(); changeColor(note.id, c.hex); };
+                        cp.appendChild(circle);
+                    });
+                }
+            });
+        }
+
+        // --- 7. ACTIONS ---
+        async function togglePin(id) {
+            const note = await getDecryptedNote(id);
+            if (note) { note.isPinned = !note.isPinned ? 1 : 0; await saveNote(note); }
+        }
+
+        async function toggleArchive(id) {
+            const note = await getDecryptedNote(id);
+            if (note) {
+                note.isArchived = !note.isArchived ? 1 : 0;
+                note.isPinned = 0;
+                await saveNote(note);
+                showToast(note.isArchived ? 'Note archived' : 'Note unarchived');
+            }
+        }
+
+        async function moveToTrash(id) {
+            const note = await getDecryptedNote(id);
+            if (note) {
+                note.isTrashed = 1;
+                note.trashedAt = Date.now();
+                note.isPinned = 0;
+                await saveNote(note);
+                showToast('Note moved to trash');
+            }
+        }
+
+        async function restoreNote(id) {
+            const note = await getDecryptedNote(id);
+            if (note) {
+                note.isTrashed = 0;
+                note.trashedAt = null;
+                await saveNote(note);
+                showToast('Note restored');
+            }
+        }
+
+        async function permDeleteNote(id) {
+            if (confirm('Permanently delete this note? This cannot be undone.')) {
+                await deleteNotePermanently(id);
+                showToast('Note permanently deleted');
+            }
+        }
+
+        async function changeColor(id, hex) {
+            const note = await getDecryptedNote(id);
+            if (note) { note.color = hex; await saveNote(note); }
+        }
+
+        // --- 8. MODAL LOGIC ---
+        async function openModal(note = null) {
+            if (!note) {
+                note = { id: generateId(), title: '', body: '', color: COLORS[0].hex, isPinned: 0, isArchived: 0, isTrashed: 0, imageBase64: null, trashedAt: null, createdAt: Date.now(), updatedAt: Date.now() };
+                await db.notes.put({ id: note.id, updatedAt: note.updatedAt, isPinned: 0, isArchived: 0, isTrashed: 0, trashedAt: null, encryptedPayload: await encryptData({title: '', body: '', color: note.color, imageBase64: null}) });
+            }
+            
+            activeModalNote = note;
+            pendingImageBase64 = note.imageBase64;
+
+            modalTitle.value = note.title || '';
+            modalBody.value = note.body || '';
+            document.getElementById('modal-content').style.backgroundColor = note.color || COLORS[0].hex;
+            
+            if (note.imageBase64) { modalImagePreview.src = note.imageBase64; modalImagePreview.style.display = 'block'; }
+            else { modalImagePreview.style.display = 'none'; }
+
+            modalColorPicker.innerHTML = '';
+            COLORS.forEach(c => {
+                const circle = document.createElement('div');
+                circle.className = 'color-circle';
+                circle.style.backgroundColor = c.hex;
+                if (c.hex === '#2d2e30') circle.style.border = '1px solid #5f6368';
+                circle.onclick = (e) => {
+                    e.stopPropagation();
+                    activeModalNote.color = c.hex;
+                    document.getElementById('modal-content').style.backgroundColor = c.hex;
+                    modalColorPicker.classList.remove('active');
+                };
+                modalColorPicker.appendChild(circle);
+            });
+
+            modalOverlay.classList.add('active');
+            modalTitle.focus();
+            renderNotes();
+        }
+
+        async function closeModal() {
+            if (activeModalNote) {
+                activeModalNote.title = modalTitle.value.trim();
+                activeModalNote.body = modalBody.value.trim();
+                activeModalNote.imageBase64 = pendingImageBase64;
+
+                if (!activeModalNote.title && !activeModalNote.body && !activeModalNote.imageBase64) {
+                    await db.notes.delete(activeModalNote.id);
+                } else {
+                    await saveNote(activeModalNote);
+                }
+            }
+            modalOverlay.classList.remove('active');
+            activeModalNote = null;
+            pendingImageBase64 = null;
+            renderNotes();
+        }
+
+        // --- 9. EVENT LISTENERS ---
+        // Auth
+        document.getElementById('btn-setup').addEventListener('click', setupVault);
+        document.getElementById('btn-login').addEventListener('click', loginVault);
+        document.getElementById('btn-wipe').addEventListener('click', wipeVault);
+        document.getElementById('nav-lock').addEventListener('click', lockVault);
+
+        // Guide
+        document.getElementById('nav-guide').addEventListener('click', () => document.getElementById('guide-overlay').classList.add('active'));
+        document.getElementById('close-guide-btn').addEventListener('click', () => document.getElementById('guide-overlay').classList.remove('active'));
+        document.getElementById('guide-overlay').addEventListener('click', (e) => { if(e.target === e.currentTarget) e.currentTarget.classList.remove('active'); });
+
+        // Navigation
+        const navItems = document.querySelectorAll('.nav-item[data-filter]');
+        navItems.forEach(item => {
+            item.addEventListener('click', () => {
+                navItems.forEach(i => i.classList.remove('active'));
+                item.classList.add('active');
+                currentFilter = item.dataset.filter;
+                searchQuery = '';
+                searchBar.value = '';
+                renderNotes();
+                sidebar.classList.remove('open');
+            });
+        });
+
+        // UI Elements
+        const sidebar = document.getElementById('sidebar');
+        const searchBar = document.getElementById('search-bar');
+        const createArea = document.getElementById('create-area');
+        const pinnedSection = document.getElementById('pinned-section');
+        const pinnedGrid = document.getElementById('pinned-grid');
+        const unpinnedSection = document.getElementById('unpinned-section');
+        const unpinnedGrid = document.getElementById('unpinned-grid');
+        const unpinnedTitle = document.getElementById('unpinned-title');
+        const trashHeader = document.getElementById('trash-header');
+        const messageArea = document.getElementById('message-area');
+        const modalOverlay = document.getElementById('modal-overlay');
+        const modalTitle = document.getElementById('modal-title');
+        const modalBody = document.getElementById('modal-body');
+        const modalImagePreview = document.getElementById('modal-image-preview');
+        const modalColorPicker = document.getElementById('modal-color-picker');
+        const modalImageInput = document.getElementById('modal-image-input');
+
+        document.getElementById('menu-toggle').addEventListener('click', () => sidebar.classList.toggle('open'));
+        searchBar.addEventListener('input', (e) => { searchQuery = e.target.value; renderNotes(); });
+        createArea.addEventListener('click', () => openModal());
+        document.getElementById('modal-close-btn').addEventListener('click', closeModal);
+        modalOverlay.addEventListener('click', (e) => { if (e.target === modalOverlay) closeModal(); });
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && modalOverlay.classList.contains('active')) closeModal(); });
+
+        document.getElementById('modal-color-btn').addEventListener('click', (e) => { e.stopPropagation(); modalColorPicker.classList.toggle('active'); });
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('#modal-color-btn')) modalColorPicker.classList.remove('active');
+            document.querySelectorAll('.color-picker-popup.active').forEach(popup => {
+                if (!e.target.closest('.note-color-btn')) popup.classList.remove('active');
+            });
+        });
+
+        document.addEventListener('click', (e) => {
+            const colorBtn = e.target.closest('.note-color-btn');
+            if (colorBtn) {
+                e.stopPropagation();
+                const popup = colorBtn.querySelector('.color-picker-popup');
+                document.querySelectorAll('.color-picker-popup.active').forEach(p => { if(p !== popup) p.classList.remove('active'); });
+                popup.classList.toggle('active');
+            }
+        });
+
+        document.getElementById('modal-image-btn').addEventListener('click', () => modalImageInput.click());
+        modalImageInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            if (file.size > 2 * 1024 * 1024) { showToast("Image must be under 2MB"); return; }
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                pendingImageBase64 = ev.target.result;
+                modalImagePreview.src = pendingImageBase64;
+                modalImagePreview.style.display = 'block';
+            };
+            reader.readAsDataURL(file);
+            e.target.value = '';
+        });
+
+        document.getElementById('empty-trash-btn').addEventListener('click', emptyTrash);
+
+        // Export Decrypted Data
+        document.getElementById('btn-export').addEventListener('click', async () => {
+            try {
+                const dbNotes = await db.notes.toArray();
+                const decryptedExport = [];
+                for (let n of dbNotes) {
+                    try {
+                        const payload = await decryptData(n.encryptedPayload);
+                        decryptedExport.push({ ...n, ...payload, encryptedPayload: undefined });
+                    } catch(e) { console.warn("Skip encrypt export"); }
+                }
+                const json = JSON.stringify(decryptedExport, null, 2);
+                const blob = new Blob([json], { type: "application/json" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `zerodays_decrypted_backup_${new Date().toISOString().split('T')[0]}.json`;
+                document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                showToast("Decrypted data exported successfully");
+            } catch (e) { showToast("Export failed"); }
+        });
+
+        // Import Data (Will be encrypted with current vault key)
+        document.getElementById('btn-import').addEventListener('click', () => document.getElementById('file-import').click());
+        document.getElementById('file-import').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            try {
+                const text = await file.text();
+                const data = JSON.parse(text);
+                if (!Array.isArray(data)) throw new Error("Invalid format");
+                for (let note of data) {
+                    note.encryptedPayload = undefined; // Strip old payload
+                    await saveNote(note); // saveNote will encrypt it with current key
+                }
+                showToast(`Imported & encrypted ${data.length} notes`);
+                renderNotes();
+            } catch (err) {
+                showToast("Import failed: Invalid JSON");
+            }
+            e.target.value = '';
+        });
+
+        // Multi-Tab Sync
+        try {
+            const channel = new BroadcastChannel('zerodays_sync');
+            channel.onmessage = (event) => { if (event.data.type === 'DB_UPDATE') renderNotes(); };
+            const originalSaveNote = saveNote;
+            window.saveNote = async function(noteData) {
+                await originalSaveNote(noteData);
+                channel.postMessage({ type: 'DB_UPDATE' });
+            };
+            const originalDelete = deleteNotePermanently;
+            window.deleteNotePermanently = async function(id) {
+                await originalDelete(id);
+                channel.postMessage({ type: 'DB_UPDATE' });
+            };
+            const originalEmptyTrash = emptyTrash;
+            window.emptyTrash = async function() {
+                await originalEmptyTrash();
+                channel.postMessage({ type: 'DB_UPDATE' });
+            };
+        } catch (e) { console.warn("BroadcastChannel API not supported."); }
+
+        // --- 10. INITIALIZATION ---
+        window.onload = () => {
+            checkVaultExists();
+        };
+    </script>
+</body>
+</html>
